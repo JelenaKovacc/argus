@@ -227,8 +227,8 @@ class RxSnifferThread(threading.Thread):
 
     @staticmethod
     def _get_ntp_timestamp():
-        diff = datetime.datetime.utcnow() - datetime.datetime(1900, 1, 1, 0, 0, 0)
-        return diff.days * 24 * 60 * 60 + diff.seconds
+        diff = int(round(time.time() * 1000))
+        return diff
 
 class TxMqttThread(threading.Thread):
     """
