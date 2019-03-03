@@ -3,16 +3,18 @@ Argus client script which attaches to the broker and sends
 sniffed packets through a pipe to Wireshark.
 """
 
-import binascii
-import json
-import os
-import platform
-import struct
-import subprocess
 import threading
 import time
+import struct
 import traceback
+import binascii
+import json
+import subprocess
+import os
+import platform
+
 import paho.mqtt.client
+
 import ArgusVersion
 
 
@@ -28,7 +30,7 @@ if isWindows():
     import win32pipe
     import win32file
 elif isLinux():
-    pass
+    import serial
 else:
     print("Sorry, we don't currently have support for the " + platform.system() + " OS")
     exit()
@@ -64,7 +66,7 @@ class RxMqttThread(threading.Thread):
     Thread which subscribes to the MQTT broker and pushes
     received frames to he
     """
-    a=0
+
     MQTT_BROKER_HOST    = 'argus.paris.inria.fr'
     MQTT_BROKER_PORT    = 1883
     MQTT_BROKER_TOPIC   = 'inria-paris/beamlogicj'
@@ -87,7 +89,7 @@ class RxMqttThread(threading.Thread):
     def run(self):
         try:
             self.mqtt.connect(host=self.MQTT_BROKER_HOST, port=1883, keepalive=60)
-            self.mqtt.loop_forever()  #handles reconnects
+            self.mqtt.loop_forever()  # handles reconnects
         except Exception as err:
             logCrash(self.name, err)
 
@@ -101,30 +103,24 @@ class RxMqttThread(threading.Thread):
         self.mqtt.subscribe('argus/{0}'.format(self.MQTT_BROKER_TOPIC))
 
     def _mqtt_on_message(self, client, userdata, msg):
-
-        self.txWiresharkThread.duplicate_check(msg.payload) # poziv funkcije za provjeru duplikata
-                                                            # bitno bas da se proslijedi samo korisni dio poruke!
-        #self.txWiresharkThread.publish(msg.payload)
+        if self.txWiresharkThread.DuplicateCheck(msg.payload):
+            self.txWiresharkThread.publish(msg.payload)
 
 
 class TxWiresharkThread(threading.Thread):
     """
     Thread which publishes sniffed frames to Wireshark broker.
     """
+    buffer = [None]*200
 
     if isWindows():
         PIPE_NAME_WIRESHARK = r'\\.\pipe\argus'
     elif isLinux():
         PIPE_NAME_WIRESHARK = r'/tmp/argus'
 
-
-    ZEP_HEADER_LEN = 64
-    buffer = []                                           # buffer on the client side (dictionarz)
-    br    =0                                              #indikator
     def __init__(self):
 
         # local variables
-
         self.dataLock             = threading.Lock()
         self.reconnectToPipeEvent = threading.Event()
         self.reconnectToPipeEvent.clear()
@@ -191,82 +187,50 @@ class TxWiresharkThread(threading.Thread):
             logCrash(self.name, err)
 
     #======================== public ==========================================
-    def duplicate_check  (self, msg) : #funkcija koja provjerava duplikate
-
-        if not self.buffer: # ako je bafer na pocetku prazan potrebno je da mu dodamo tu prvu poruku
-            self.buffer.append(msg);
-            self.publish(msg); #posto je prva dolje ne udje da se objavi, pa moram ovako :D
-
-        self.br = 0 #indikator da li postoji vec takva poruka u baferu
-        #print int(json.loads(msg)['bytes'][8:10],16)  # Channel
-        #print int(json.loads(msg)['bytes'][10:14],16) # Device id
-        #print int(json.loads(msg)['bytes'][18:34 ],16) # NTP Timestamp
-
-
-        for zapis in self.buffer:
-            #print int(json.loads(msg)['bytes'][18:34 ],16) - int(json.loads(zapis)['bytes'][18:34 ],16)
-            if json.loads(msg)['bytes'][64:] == json.loads(zapis)['bytes'][64:] and \
-                    int(json.loads(msg)['bytes'][8:10],16) == int(json.loads(zapis)['bytes'][8:10],16) and\
-                    int(json.loads(msg)['bytes'][10:14],16) == int(json.loads(zapis)['bytes'][10:14],16) and\
-                    int(json.loads(msg)['bytes'][18:34 ],16) - int(json.loads(zapis)['bytes'][18:34 ],16) < 2000:
-                self.br = self.br +1 #Poruka vec postoji!!
-                print ('Poruka vec postoji!')
-
-
-        if self.br > 0:
-                print json.loads(msg)['bytes'] [64:] #samo mi je ostampaj
-        else:
-                self.buffer.append(msg) # posto je razlicita samo mi je dodaj u bafer
-                self.publish(msg) # objavi na Wireshark
-
 
     def publish(self, msg):
-
         with self.dataLock:
             if not self.wiresharkConnected:
                 # no Wireshark listening, dropping.
                 return
 
-
+        print()
         zep      = binascii.unhexlify(json.loads(msg)['bytes'])
         udp      = ''.join(
-                [
-                    chr(b) for b in [
-                        0x00, 0x00,             # source port
-                        0x45, 0x5a,             # destination port
-                        0x00, 8+len(zep),       # length
-                        0xbc, 0x04,             # checksum
-                    ]
+            [
+                chr(b) for b in [
+                    0x00, 0x00,             # source port
+                    0x45, 0x5a,             # destination port
+                    0x00, 8+len(zep),       # length
+                    0xbc, 0x04,             # checksum
                 ]
-            )
+            ]
+        )
         ipv6     = ''.join(
-                [
-                    chr(b) for b in [
-                        0x60,                       # version
-                        0x00, 0x00, 0x00,           # traffic class
-                        0x00, len(udp) + len(zep),  # payload length
-                        0x11,                       # next header (17==UDP)
-                        0x08,                       # HLIM
-                        0xbb, 0xbb, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x01,  # src
-                        0xbb, 0xbb, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x01,  # dest
-                    ]
+            [
+                chr(b) for b in [
+                    0x60,                       # version
+                    0x00, 0x00, 0x00,           # traffic class
+                    0x00, len(udp) + len(zep),  # payload length
+                    0x11,                       # next header (17==UDP)
+                    0x08,                       # HLIM
+                    0xbb, 0xbb, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                    0x00, 0x00, 0x00, 0x00, 0x00, 0x01,  # src
+                    0xbb, 0xbb, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                    0x00, 0x00, 0x00, 0x00, 0x00, 0x01,  # dest
                 ]
-            )
+            ]
+        )
         ethernet = ''.join([chr(b) for b in [
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00,     # source
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00,     # destination
-                        0x86, 0xdd,                             # type (IPv6)
-                    ]
+                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00,     # source
+                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00,     # destination
+                    0x86, 0xdd,                             # type (IPv6)
                 ]
-            )
+            ]
+        )
 
         frame    = ''.join([ethernet, ipv6, udp, zep])
-
         pcap     = self._createPcapPacketHeader(len(frame))
-
-
 
         try:
             if isWindows():
@@ -278,6 +242,20 @@ class TxWiresharkThread(threading.Thread):
         except:
             self.reconnectToPipeEvent.set()
 
+    def DuplicateCheck(self, msg):
+
+         for record in self.buffer:
+             if record is not None:
+                 if ((json.loads(msg)['bytes'][64:] == record[64:])
+                  and (int((json.loads(msg)['bytes'][10:14]), 16)  != int((record[10:14]), 16))
+                  and (int((json.loads(msg)['bytes'][8:10]), 16)   == int((record[8:10]), 16))
+                  and ((int((json.loads(msg)['bytes'][18:34]), 16)  - int((record[18:34]), 16)) < 2000)):
+                     return False
+
+
+         self.buffer[:0] = [json.loads(msg)['bytes']]
+         self.buffer.pop()
+         return True
 
     #======================== private =========================================
 
