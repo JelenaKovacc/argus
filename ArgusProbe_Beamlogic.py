@@ -227,8 +227,8 @@ class RxSnifferThread(threading.Thread):
 
     @staticmethod
     def _get_ntp_timestamp():
-        diff = int(round(time.time() * 1000))
-        return diff
+        return int(round(time.time() * 1000))
+        
 
 class TxMqttThread(threading.Thread):
     """
