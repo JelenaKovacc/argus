@@ -249,7 +249,7 @@ class TxWiresharkThread(threading.Thread):
                  if ((json.loads(msg)['bytes'][64:] == record[64:])
                   and (int((json.loads(msg)['bytes'][10:14]), 16)  != int((record[10:14]), 16))
                   and (int((json.loads(msg)['bytes'][8:10]), 16)   == int((record[8:10]), 16))
-                  and ((int((json.loads(msg)['bytes'][18:34]), 16)  - int((record[18:34]), 16)) < 2000)):
+                  and ((int((json.loads(msg)['bytes'][18:34]), 16)  - int((record[18:34]), 16)) < 10)):
                      return False
 
 
