@@ -69,7 +69,7 @@ class RxMqttThread(threading.Thread):
 
     MQTT_BROKER_HOST    = 'argus.paris.inria.fr'
     MQTT_BROKER_PORT    = 1883
-    MQTT_BROKER_TOPIC   = 'inria-paris/beamlogicj'
+    MQTT_BROKER_TOPIC   = 'inria-paris/beamlogic'
 
     def __init__(self, txWiresharkThread):
 
@@ -111,7 +111,17 @@ class TxWiresharkThread(threading.Thread):
     """
     Thread which publishes sniffed frames to Wireshark broker.
     """
+    
+    # buffer for sniffed frames
     buffer = [None]*200
+ 
+    ZEP_HEADER_LEN = 64
+
+    """
+    The time in milliseconds in which the messages are considered to be duplicates (same message sniffed by multiple sniffers)
+    Accuracy of NTP protocol and Serial Port delay are taken into account
+    """
+    DEV_TIME = 5
 
     if isWindows():
         PIPE_NAME_WIRESHARK = r'\\.\pipe\argus'
@@ -193,8 +203,6 @@ class TxWiresharkThread(threading.Thread):
             if not self.wiresharkConnected:
                 # no Wireshark listening, dropping.
                 return
-
-        print()
         zep      = binascii.unhexlify(json.loads(msg)['bytes'])
         udp      = ''.join(
             [
@@ -242,17 +250,19 @@ class TxWiresharkThread(threading.Thread):
         except:
             self.reconnectToPipeEvent.set()
 
-    def DuplicateCheck(self, msg):
-
+    def DuplicateCheck(self, msg):          
+       """
+       Function which checks if message is duplicate (one message sniffed by multiple sniffers) 
+       Function first compare ieee154 with all packets from buffer, then Channel, then DeviceID and NTP timestamp field from ZEP header
+       Returns True if message is not in buffer, keeps new messages in buffer and removes the oldest one
+       """
          for record in self.buffer:
              if record is not None:
-                 if ((json.loads(msg)['bytes'][64:] == record[64:])
-                  and (int((json.loads(msg)['bytes'][10:14]), 16)  != int((record[10:14]), 16))
+                 if ((json.loads(msg)['bytes'][self.ZEP_HEADER_LEN:] == record[self.ZEP_HEADER_LEN:])
                   and (int((json.loads(msg)['bytes'][8:10]), 16)   == int((record[8:10]), 16))
-                  and ((int((json.loads(msg)['bytes'][18:34]), 16)  - int((record[18:34]), 16)) < 10)):
+                  and (int((json.loads(msg)['bytes'][10:14]), 16)  != int((record[10:14]), 16))
+                  and ((int((json.loads(msg)['bytes'][18:34]), 16)  - int((record[18:34]), 16)) < self.DEV_TIME)):
                      return False
-
-
          self.buffer[:0] = [json.loads(msg)['bytes']]
          self.buffer.pop()
          return True

@@ -51,6 +51,9 @@ class RxSnifferThread(threading.Thread):
     PCAP_GLOBALHEADER_LEN    = 24 # 4+2+2+4+4+4+4
     PCAP_PACKETHEADER_LEN    = 16 # 4+4+4+4
     BEAMLOGIC_HEADER_LEN     = 20 # 1+8+1+1+4+4+1
+    """
+    DEV_ID1 and DEV_ID2 are random numbers between 0 and 255 which defines DeviceID field from ZEP header
+    """
     DEV_ID1 = randint(0, 255)
     DEV_ID2 = randint(0, 255)
     PIPE_SNIFFER             = r'\\.\pipe\analyzer'
@@ -206,7 +209,7 @@ class RxSnifferThread(threading.Thread):
             0x02,           # Version
             0x01,           # Type (Data)
             channel,        # Channel ID
-            self.DEV_ID1, self.DEV_ID2, # Device ID
+            self.DEV_ID1, self.DEV_ID2, # DeviceID field - every device should have different identifier
             0x01,           # CRC/LQI Mode
             0xff,           # LQI Val
         ] + \
@@ -227,6 +230,9 @@ class RxSnifferThread(threading.Thread):
 
     @staticmethod
     def _get_ntp_timestamp():
+    """
+    Function returns local machine time
+    """
         return int(round(time.time() * 1000))
         
 
