@@ -31,6 +31,7 @@ if isWindows():
     import win32file
 elif isLinux():
     import serial
+
 else:
     print("Sorry, we don't currently have support for the " + platform.system() + " OS")
     exit()
@@ -251,11 +252,11 @@ class TxWiresharkThread(threading.Thread):
             self.reconnectToPipeEvent.set()
 
     def DuplicateCheck(self, msg):          
-       """
-       Function which checks if message is duplicate (one message sniffed by multiple sniffers) 
-       Function first compare ieee154 with all packets from buffer, then Channel, then DeviceID and NTP timestamp field from ZEP header
-       Returns True if message is not in buffer, keeps new messages in buffer and removes the oldest one
-       """
+         """
+         Function which checks if message is duplicate (one message sniffed by multiple sniffers)
+         Function first compare ieee154 with all packets from buffer, then Channel, then DeviceID and NTP timestamp field from ZEP header
+         Returns True if message is not in buffer, keeps new messages in buffer and removes the oldest one
+         """
          for record in self.buffer:
              if record is not None:
                  if ((json.loads(msg)['bytes'][self.ZEP_HEADER_LEN:] == record[self.ZEP_HEADER_LEN:])

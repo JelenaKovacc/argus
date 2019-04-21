@@ -230,9 +230,9 @@ class RxSnifferThread(threading.Thread):
 
     @staticmethod
     def _get_ntp_timestamp():
-    """
-    Function returns local machine time
-    """
+        """
+        Function returns local machine time
+        """
         return int(round(time.time() * 1000))
         
 
