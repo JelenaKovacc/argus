@@ -262,7 +262,7 @@ class TxWiresharkThread(threading.Thread):
                  if ((json.loads(msg)['bytes'][self.ZEP_HEADER_LEN:] == record[self.ZEP_HEADER_LEN:])
                   and (int((json.loads(msg)['bytes'][8:10]), 16)   == int((record[8:10]), 16))
                   and (int((json.loads(msg)['bytes'][10:14]), 16)  != int((record[10:14]), 16))
-                  and ((int((json.loads(msg)['bytes'][18:34]), 16)  - int((record[18:34]), 16)) < self.DEV_TIME)):
+                  and ((int((json.loads(msg)['bytes'][18:34]), 16)  - int((record[18:34]), 16)) <= self.DEV_TIME)):
                      return False
          self.buffer[:0] = [json.loads(msg)['bytes']]
          self.buffer.pop()
